@@ -1,65 +1,38 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, TextInput, Button, FlatList } from 'react-native';
-import * as SQLite from 'expo-sqlite';
+import { Item } from '@/domain/entities/item.entity';
+import { getAllItems } from '@/use-cases/get-all-items.use-case';
+import { SqliteExpo } from '@/infrastructure/expo-sqlite-impl';
+import { createItem } from '@/use-cases/add-item.use-case';
+import { deleteItem } from '@/use-cases/delete-item.use-case';
+import { ItemsRepository } from '@/domain/interfaces/items-repository.interface';
 
-interface Item {
-  id: number;
-  name: string;
-  description: string;
-}
 
 const ItemManager = () => {
+
+  const itemsDB = useRef<ItemsRepository>(new SqliteExpo());
+
   const [items, setItems] = useState<Item[]>([]);
   const [name, setName] = useState<string>('');
   const [description, setDescription] = useState<string>('');
-  const [db, setDB] = useState<SQLite.SQLiteDatabase|null>(null);
 
   useEffect(() => {
-    
-    const getDataBase = async () => {
-      const db = await SQLite.openDatabaseAsync('databaseName');
-      
-      setDB(db);
+    const getItems = async () => {
+      const items = await getAllItems(itemsDB.current);
+      setItems(items);
     }
-    getDataBase();
-    
-  }, [])
+    getItems();
+  }, []);
 
-  useEffect(() => {
-    
-    if(!db) return;
-
-    db.execAsync(
-      'CREATE TABLE IF NOT EXISTS items (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, description TEXT);'
-    );
-
-    
-    fetchItems();
-  }, [db]);
-
-  
-  const fetchItems = async() => {
-    if(!db) return;
-    const result = await db.getAllAsync<Item>('SELECT * FROM items');
-    
-    setItems(result);
-
-  };
-  
   const addItem = async () => {
-    if(!db) return;
-    if(!description || !name) return;
-    
-    const result = await db.runAsync('INSERT INTO items (name, description) VALUES (?, ?)', name, description);
-    setItems([...items, {id: result.lastInsertRowId, description, name}]);
+    const newItem = await createItem(itemsDB.current, { description, name });
+    setItems([...items, newItem]);
   };
 
-  
-  const deleteItem = async (id:number) => {
-    if(!db) return;
-    await db.runAsync('DELETE FROM items WHERE id = $id', { $id: id });
+  const handleDeleteItem = async (id:number) => {
+    deleteItem(itemsDB.current, id)
     setItems([...items.filter(item=>item.id !==id)]);
-  }
+  };
 
   return (
     <View style={{ padding: 20 }}>
@@ -84,7 +57,7 @@ const ItemManager = () => {
           <View style={{ marginVertical: 5, padding: 10, borderWidth: 1 }}>
             <Text>{item.name}</Text>
             <Text>{item.description}</Text>
-            <Button title="Eliminar" onPress={()=>deleteItem(item.id)} color={"red"}  />
+            <Button title="Eliminar" onPress={()=>handleDeleteItem(item.id)} color={"red"}  />
           </View>
         )}
       />
